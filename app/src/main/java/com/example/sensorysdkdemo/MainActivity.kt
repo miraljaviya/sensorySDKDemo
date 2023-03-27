@@ -3,8 +3,11 @@ package com.example.sensorysdkdemo
 import ai.sensorycloud.Initializer
 import ai.sensorycloud.api.common.ServerHealthResponse
 import ai.sensorycloud.api.v1.audio.GetModelsResponse
+import ai.sensorycloud.api.v1.audio.ThresholdSensitivity
+import ai.sensorycloud.api.v1.audio.TranscribeResponse
 import ai.sensorycloud.api.v1.management.DeviceResponse
 import ai.sensorycloud.interactors.AudioStreamInteractor
+import ai.sensorycloud.interactors.TranscriptAggregator
 import ai.sensorycloud.service.AudioService
 import ai.sensorycloud.service.HealthService
 import ai.sensorycloud.service.HealthService.GetHealthListener
@@ -19,11 +22,29 @@ import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import io.grpc.stub.StreamObserver
 import java.io.InputStream
 import java.util.*
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 class MainActivity : AppCompatActivity() {
+    private lateinit var interactor: AudioStreamInteractor
+    private lateinit var audioService: AudioService
+
+    var modelName = "wakeword-16kHz-open_sesame.ubm"
+    var userID = "72f286b8-173f-436a-8869-6f7887789ee9"
+    var enrollmentDescription = "My Enrollment"
+    var isLivenessEnabled = false
+
+    // boolean to control audio streaming
+    var isRecording: AtomicBoolean = AtomicBoolean(false)
+
+    var enrollmentID = "436ee716-346e-4066-8c28-7b5ef192831f"
+
+    var aggregator = TranscriptAggregator()
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -63,7 +84,7 @@ class MainActivity : AppCompatActivity() {
             oAuthService,
             null,  // JWT signer class, only used when enrollmentType is `jwt`
             fileStream,
-            "21a060d72",  // Optional override for deviceID, useful when sharing config files across multiple devices
+            "21a060d78",  // Optional override for deviceID, useful when sharing config files across multiple devices
             "sandeep",  // Optional override for deviceName, useful when sharing config files across multiple devices
             object : EnrollDeviceListener {
                 override fun onSuccess(response: DeviceResponse) {
@@ -103,7 +124,7 @@ class MainActivity : AppCompatActivity() {
         val tokenManager = TokenManager(oAuthService)
         val OAuthToken = tokenManager.accessToken
         Log.e("xxx", "auth token $OAuthToken")
-        val audioService = AudioService(tokenManager)
+        audioService = AudioService(tokenManager)
 
         if (ContextCompat.checkSelfPermission(
                 this,
@@ -112,20 +133,29 @@ class MainActivity : AppCompatActivity() {
         ) {
             ActivityCompat.requestPermissions(this, arrayOf(RECORD_AUDIO), 100)
             // request audio permissions
-            return
         }
 
+
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
         try {
-            val interactor = AudioStreamInteractor.newAudioStreamInteractor(this)
+            interactor = AudioStreamInteractor.newAudioStreamInteractor(this)
         } catch (e: Exception) {
             // Handle error (may be due to not having audio record permissions)
         }
-
 
         audioService.getModels(object : AudioService.GetModelsListener {
             override fun onSuccess(response: GetModelsResponse) {
                 response.getModelsList()
                 Log.e("xxx", "model list ${response.modelsList}")
+                audioEnrollment()
             }
 
             override fun onFailure(t: Throwable) {
@@ -133,6 +163,104 @@ class MainActivity : AppCompatActivity() {
                 // Handle server error
             }
         })
+    }
+
+    private fun audioEnrollment() {
+       /* val requestObserver: StreamObserver<CreateEnrollmentRequest> =
+            audioService.createEnrollment(
+                modelName,
+                userID,
+                "",
+                enrollmentDescription,
+                isLivenessEnabled,
+                0,
+                0f,
+                false,
+                object : StreamObserver<CreateEnrollmentResponse> {
+                    override fun onNext(value: CreateEnrollmentResponse) {
+                        // The response contains information about the enrollment status.
+                        // * audioEnergy
+                        // * percentComplete
+                        // For enrollments with liveness, there are two additional fields that are populated.
+                        // * modelPrompt - indicates what the user should say in order to proceed with the enrollment.
+                        // * sectionPercentComplete - indicates the percentage of the current ModelPrompt that has been spoken.
+                        // EnrollmentId will be populated once the enrollment is complete
+                        if (value.getEnrollmentId() !== "") {
+                            // Enrollment is complete
+                            isRecording.set(false)
+                            Log.e("xxx", "enrolment ${value.enrollmentId}")
+                        }
+                    }
+
+                    override fun onError(t: Throwable) {
+                        Log.e("xxx", "error... ${t.message}")
+                        // Handle Server error
+                    }
+
+                    override fun onCompleted() {
+                        // Handle the grpc stream closing
+                        isRecording.set(false)
+                    }
+                }
+            )
+
+        val mThread = Thread {
+            interactor.startRecording()
+            isRecording.set(true)
+            while (isRecording.get()) {
+                try {
+                    val buffer: ByteArray = interactor.audioQueue.take()
+                    val audio: ByteString = ByteString.copyFrom(buffer)
+                    Log.e("xxx", "audio $audio")
+                    // (Make sure you use the proper type for the grpc stream you're using)
+                    val request =
+                        CreateEnrollmentRequest.newBuilder()
+                            .setAudioContent(audio)
+                            .build()
+                    requestObserver.onNext(request)
+                } catch (e: java.lang.Exception) {
+                    Log.e("xxx", "exception ${e.message}")
+                    // Handle errors (usually `InterruptedException` on the audioQueue.take call)
+                }
+            }
+            interactor.stopRecording()
+            // Close the grpc stream once you finish recording;
+            requestObserver.onCompleted()
+        }
+        mThread.start()*/
+
+        val requestObserver = audioService.transcribeAudio(
+            modelName,
+            userID,
+            "",
+            false,
+            false,
+            ThresholdSensitivity.MEDIUM,
+            0f,
+            object : StreamObserver<TranscribeResponse> {
+                override fun onNext(value: TranscribeResponse) {
+                    // Response contains information about the audio such as:
+                    // * audioEnergy
+
+                    // The transcript aggregator will collect all of the server responses and save a full transcript
+                    aggregator.processResponse(value.wordList)
+                    val transcript = aggregator.transcript
+                    Log.e("xxx", "value $transcript")
+                }
+
+                override fun onError(t: Throwable) {
+                    Log.e("xxx", "error ${t.message}")
+                    // Handle server error
+                }
+
+                override fun onCompleted() {
+                    Log.e("xxx", "on complete")
+
+                    // Handle grpc stream close
+                }
+            }
+        )
+        requestObserver.onCompleted()
     }
 
     private fun generateRandomToken(): String {
