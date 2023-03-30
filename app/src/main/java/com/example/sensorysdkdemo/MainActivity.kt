@@ -2,9 +2,7 @@ package com.example.sensorysdkdemo
 
 import ai.sensorycloud.Initializer
 import ai.sensorycloud.api.common.ServerHealthResponse
-import ai.sensorycloud.api.v1.audio.GetModelsResponse
-import ai.sensorycloud.api.v1.audio.ThresholdSensitivity
-import ai.sensorycloud.api.v1.audio.TranscribeResponse
+import ai.sensorycloud.api.v1.audio.*
 import ai.sensorycloud.api.v1.management.DeviceResponse
 import ai.sensorycloud.interactors.AudioStreamInteractor
 import ai.sensorycloud.interactors.TranscriptAggregator
@@ -22,6 +20,7 @@ import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.google.protobuf.ByteString
 import io.grpc.stub.StreamObserver
 import java.io.InputStream
 import java.util.*
@@ -84,7 +83,7 @@ class MainActivity : AppCompatActivity() {
             oAuthService,
             null,  // JWT signer class, only used when enrollmentType is `jwt`
             fileStream,
-            "21a060d78",  // Optional override for deviceID, useful when sharing config files across multiple devices
+            "21a060d702",  // Optional override for deviceID, useful when sharing config files across multiple devices
             "sandeep",  // Optional override for deviceName, useful when sharing config files across multiple devices
             object : EnrollDeviceListener {
                 override fun onSuccess(response: DeviceResponse) {
@@ -166,7 +165,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun audioEnrollment() {
-       /* val requestObserver: StreamObserver<CreateEnrollmentRequest> =
+        val requestObserver: StreamObserver<CreateEnrollmentRequest> =
             audioService.createEnrollment(
                 modelName,
                 userID,
@@ -211,7 +210,7 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val buffer: ByteArray = interactor.audioQueue.take()
                     val audio: ByteString = ByteString.copyFrom(buffer)
-                    Log.e("xxx", "audio $audio")
+                    //Log.e("xxx", "audio $audio")
                     // (Make sure you use the proper type for the grpc stream you're using)
                     val request =
                         CreateEnrollmentRequest.newBuilder()
@@ -227,10 +226,10 @@ class MainActivity : AppCompatActivity() {
             // Close the grpc stream once you finish recording;
             requestObserver.onCompleted()
         }
-        mThread.start()*/
+        mThread.start()
 
-        val requestObserver = audioService.transcribeAudio(
-            modelName,
+        val requestObserverTrans = audioService.transcribeAudio(
+            "speech_recognition_en" ,
             userID,
             "",
             false,
@@ -260,7 +259,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         )
-        requestObserver.onCompleted()
+        requestObserverTrans.onCompleted()
     }
 
     private fun generateRandomToken(): String {
