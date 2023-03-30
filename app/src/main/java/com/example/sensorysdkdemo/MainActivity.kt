@@ -83,7 +83,7 @@ class MainActivity : AppCompatActivity() {
             oAuthService,
             null,  // JWT signer class, only used when enrollmentType is `jwt`
             fileStream,
-            "21a060d702",  // Optional override for deviceID, useful when sharing config files across multiple devices
+            "21a060d703",  // Optional override for deviceID, useful when sharing config files across multiple devices
             "sandeep",  // Optional override for deviceName, useful when sharing config files across multiple devices
             object : EnrollDeviceListener {
                 override fun onSuccess(response: DeviceResponse) {
@@ -222,7 +222,7 @@ class MainActivity : AppCompatActivity() {
                     // Handle errors (usually `InterruptedException` on the audioQueue.take call)
                 }
             }
-            interactor.stopRecording()
+          //  interactor.stopRecording()
             // Close the grpc stream once you finish recording;
             requestObserver.onCompleted()
         }
