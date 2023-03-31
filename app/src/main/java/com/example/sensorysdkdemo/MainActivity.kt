@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 
 class MainActivity : AppCompatActivity() {
+    private var txtHello: TextView? = null
     private lateinit var requestObserverTrans: StreamObserver<TranscribeRequest>
     private lateinit var interactor: AudioStreamInteractor
     private lateinit var audioService: AudioService
@@ -74,10 +75,10 @@ class MainActivity : AppCompatActivity() {
             // Handle error with retrieving credentials
         }
 */
-        val txtHello : TextView = findViewById(R.id.txt_hello)
+        txtHello = findViewById(R.id.txt_hello)
 
-        txtHello.setOnClickListener {
-            onCompleteTransResolve()
+        txtHello?.setOnClickListener {
+           // onCompleteTransResolve()
         }
         val credentialStore = DefaultSecureCredentialStore(this, "default")
         val oAuthService = OAuthService(credentialStore)
@@ -90,7 +91,7 @@ class MainActivity : AppCompatActivity() {
             oAuthService,
             null,  // JWT signer class, only used when enrollmentType is `jwt`
             fileStream,
-            "21a060d706",  // Optional override for deviceID, useful when sharing config files across multiple devices
+            "21a060d711",  // Optional override for deviceID, useful when sharing config files across multiple devices
             "sandeep",  // Optional override for deviceName, useful when sharing config files across multiple devices
             object : EnrollDeviceListener {
                 override fun onSuccess(response: DeviceResponse) {
@@ -123,6 +124,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onCompleteTransResolve() {
+        interactor.stopRecording()
         requestObserverTrans.onCompleted()
     }
 
@@ -235,19 +237,19 @@ class MainActivity : AppCompatActivity() {
             "speech_recognition_en" ,
             userID,
             "",
-            false,
-            false,
-            ThresholdSensitivity.MEDIUM,
+            true,
+            true,
+            ThresholdSensitivity.HIGH,
             0f,
             object : StreamObserver<TranscribeResponse> {
                 override fun onNext(value: TranscribeResponse) {
-                    // Response contains information about the audio such as:
-                    // * audioEnergy
-
-                    // The transcript aggregator will collect all of the server responses and save a full transcript
                     aggregator.processResponse(value.wordList)
                     val transcript = aggregator.transcript
                     Log.e("xxx", "value $transcript")
+                    runOnUiThread {
+                        txtHello?.text = transcript
+                    }
+                   // txtHello?.text = transcript
                 }
 
                 override fun onError(t: Throwable) {
