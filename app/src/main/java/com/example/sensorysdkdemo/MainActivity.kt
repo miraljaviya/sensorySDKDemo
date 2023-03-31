@@ -17,6 +17,7 @@ import android.Manifest.permission.RECORD_AUDIO
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -28,6 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 
 class MainActivity : AppCompatActivity() {
+    private lateinit var requestObserverTrans: StreamObserver<TranscribeRequest>
     private lateinit var interactor: AudioStreamInteractor
     private lateinit var audioService: AudioService
 
@@ -72,6 +74,11 @@ class MainActivity : AppCompatActivity() {
             // Handle error with retrieving credentials
         }
 */
+        val txtHello : TextView = findViewById(R.id.txt_hello)
+
+        txtHello.setOnClickListener {
+            onCompleteTransResolve()
+        }
         val credentialStore = DefaultSecureCredentialStore(this, "default")
         val oAuthService = OAuthService(credentialStore)
 
@@ -83,7 +90,7 @@ class MainActivity : AppCompatActivity() {
             oAuthService,
             null,  // JWT signer class, only used when enrollmentType is `jwt`
             fileStream,
-            "21a060d704",  // Optional override for deviceID, useful when sharing config files across multiple devices
+            "21a060d706",  // Optional override for deviceID, useful when sharing config files across multiple devices
             "sandeep",  // Optional override for deviceName, useful when sharing config files across multiple devices
             object : EnrollDeviceListener {
                 override fun onSuccess(response: DeviceResponse) {
@@ -96,7 +103,6 @@ class MainActivity : AppCompatActivity() {
                         override fun onSuccess(serverHealthResponse: ServerHealthResponse) {
                             Log.e("xxx", "health service $serverHealthResponse")
                             // Process health response
-
                             createAudioService(oAuthService)
                         }
 
@@ -114,9 +120,10 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         )
+    }
 
-
-
+    private fun onCompleteTransResolve() {
+        requestObserverTrans.onCompleted()
     }
 
     private fun createAudioService(oAuthService: OAuthService) {
@@ -133,8 +140,6 @@ class MainActivity : AppCompatActivity() {
             ActivityCompat.requestPermissions(this, arrayOf(RECORD_AUDIO), 100)
             // request audio permissions
         }
-
-
     }
 
     override fun onRequestPermissionsResult(
@@ -156,16 +161,14 @@ class MainActivity : AppCompatActivity() {
                 Log.e("xxx", "model list ${response.modelsList}")
                 audioEnrollment()
             }
-
             override fun onFailure(t: Throwable) {
                 Log.e("xxx", "on failure ${t.message}")
-                // Handle server error
             }
         })
     }
 
     private fun audioEnrollment() {
-        val requestObserver: StreamObserver<CreateEnrollmentRequest> =
+       /* val requestObserver: StreamObserver<CreateEnrollmentRequest> =
             audioService.createEnrollment(
                 modelName,
                 userID,
@@ -202,8 +205,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             )
-
-        val mThread = Thread {
+*/
+      /*  val mThread = Thread {
             interactor.startRecording()
             isRecording.set(true)
             while (isRecording.get()) {
@@ -222,13 +225,13 @@ class MainActivity : AppCompatActivity() {
                     // Handle errors (usually `InterruptedException` on the audioQueue.take call)
                 }
             }
-            // interactor.stopRecording()
+            interactor.stopRecording()
             // Close the grpc stream once you finish recording;
-            //requestObserver.onCompleted()
+            requestObserver.onCompleted()
         }
-        mThread.start()
+        mThread.start()*/
 
-        val requestObserverTrans = audioService.transcribeAudio(
+        requestObserverTrans = audioService.transcribeAudio(
             "speech_recognition_en" ,
             userID,
             "",
@@ -254,12 +257,37 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onCompleted() {
                     Log.e("xxx", "on complete")
-
                     // Handle grpc stream close
                 }
             }
         )
-        requestObserverTrans.onCompleted()
+
+
+        val mThread = Thread {
+            interactor.startRecording()
+            isRecording.set(true)
+            while (isRecording.get()) {
+                try {
+                    val buffer: ByteArray = interactor.audioQueue.take()
+                    val audio: ByteString = ByteString.copyFrom(buffer)
+                    //Log.e("xxx", "audio $audio")
+                    // (Make sure you use the proper type for the grpc stream you're using)
+                    val request =
+                        TranscribeRequest.newBuilder()
+                            .setAudioContent(audio)
+                            .build()
+                    requestObserverTrans.onNext(request)
+                } catch (e: java.lang.Exception) {
+                    Log.e("xxx", "exception ${e.message}")
+                    // Handle errors (usually `InterruptedException` on the audioQueue.take call)
+                }
+            }
+            interactor.stopRecording()
+            // Close the grpc stream once you finish recording;
+            requestObserverTrans.onCompleted()
+        }
+        mThread.start()
+        // requestObserverTrans.onCompleted()
     }
 
     private fun generateRandomToken(): String {
